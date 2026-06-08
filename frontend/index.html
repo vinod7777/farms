@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sahasra Barath - Enterprise Agroforestry & Carbon Platform</title>
+    <!-- Use Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=Space+Grotesk:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/src/index.css">
+    <style>
+      body {
+        font-family: 'Outfit', sans-serif;
+        background-color: #0b130e;
+        color: #e2e8f0;
+        overflow-x: hidden;
+      }
+      h1, h2, h3, .heading-font {
+        font-family: 'Space Grotesk', sans-serif;
+      }
+      .glassmorphism {
+        background: rgba(15, 27, 20, 0.45);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+    </style>
+  </head>
+  <body>
+    <!-- 3D Canvas Background Container -->
+    <div id="three-canvas-container" class="fixed inset-0 z-0 w-full h-full pointer-events-none opacity-80"></div>
+
+    <div class="relative z-10 min-h-screen flex flex-col justify-between">
+      <!-- Navbar -->
+      <nav class="w-full max-w-7xl mx-auto px-6 py-6 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
+            </svg>
+          </div>
+          <span class="text-2xl font-bold tracking-tight text-white">Sahasra Barath</span>
+        </div>
+        
+        <div class="flex gap-4">
+          <a href="portal.html#/login" class="px-5 py-2.5 rounded-xl text-sm font-semibold text-emerald-400 hover:text-emerald-300 transition duration-300">
+            Sign In
+          </a>
+          <a href="portal.html#/login?register=true" class="px-5 py-2.5 bg-emerald-500 text-black hover:bg-emerald-400 font-bold rounded-xl text-sm transition duration-300 shadow-lg shadow-emerald-500/20">
+            Register Farm
+          </a>
+        </div>
+      </nav>
+
+      <!-- Hero Section -->
+      <header class="w-full max-w-7xl mx-auto px-6 py-12 md:py-24 flex flex-col lg:flex-row items-center justify-between gap-12 flex-grow">
+        <div class="w-full lg:w-1/2 space-y-8 text-left">
+          <div class="inline-flex items-center gap-2 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-xs font-semibold tracking-wide text-emerald-400 uppercase">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            Enterprise Agroforestry Platform
+          </div>
+          
+          <h1 class="text-4xl sm:text-6xl font-extrabold tracking-tight text-white leading-tight">
+            Cultivating Wealth, <br>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-green-500">Restoring the Earth</span>
+          </h1>
+          
+          <p class="text-lg sm:text-xl text-emerald-100/70 max-w-lg leading-relaxed">
+            Sahasra Barath empowers farmers to catalog forest assets, track spatial lands securely, rent plots, and generate certified carbon credits through spatial mapping.
+          </p>
+          
+          <div class="flex flex-col sm:flex-row gap-4 pt-4">
+            <a href="portal.html#/login?register=true" class="px-8 py-4 bg-emerald-500 text-black font-extrabold rounded-2xl shadow-xl shadow-emerald-500/20 text-center hover:bg-emerald-400 transition-all hover:scale-[1.02] active:scale-[0.98] duration-300">
+              Start Mapping Your Land
+            </a>
+            <a href="portal.html#/login" class="px-8 py-4 glassmorphism text-white font-semibold rounded-2xl text-center hover:bg-white/10 transition-all duration-300 border border-white/10">
+              Access Dashboard
+            </a>
+          </div>
+        </div>
+
+        <!-- Glass Box Info cards -->
+        <div class="w-full lg:w-1/2 max-w-md grid grid-cols-1 gap-6">
+          <div class="glassmorphism p-6 rounded-3xl hover:translate-y-[-4px] transition-transform duration-300">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl font-bold">1</div>
+              <div>
+                <h3 class="font-bold text-white text-lg">Walk Your Boundary</h3>
+                <p class="text-sm text-emerald-100/60 mt-1">Precise GPS coordinates track and map your forest perimeter automatically, synced offline.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="glassmorphism p-6 rounded-3xl hover:translate-y-[-4px] transition-transform duration-300">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl font-bold">2</div>
+              <div>
+                <h3 class="font-bold text-white text-lg">Verify Single Trees</h3>
+                <p class="text-sm text-emerald-100/60 mt-1">Camera uploads with automated GPS-EXIF cross-verification detect duplication and fraud.</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="glassmorphism p-6 rounded-3xl hover:translate-y-[-4px] transition-transform duration-300">
+            <div class="flex items-center gap-4">
+              <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl font-bold">3</div>
+              <div>
+                <h3 class="font-bold text-white text-lg">Carbon Credit Ledger</h3>
+                <p class="text-sm text-emerald-100/60 mt-1">Calculate biometric carbon capture securely based on tree species and land acreage.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Footer -->
+      <footer class="w-full py-8 border-t border-white/5 bg-black/20">
+        <div class="max-w-7xl mx-auto px-6 flex flex-col sm:flex-row justify-between items-center gap-4">
+          <p class="text-xs text-emerald-100/40">&copy; 2026 Sahasra Barath Platform. All Rights Reserved.</p>
+          <div class="flex gap-6 text-xs text-emerald-100/40">
+            <a href="#" class="hover:text-emerald-400">Terms of Service</a>
+            <a href="#" class="hover:text-emerald-400">Privacy Policy</a>
+            <a href="portal.html#/admin" class="hover:text-emerald-400 font-semibold text-emerald-400/80">Admin Panel</a>
+          </div>
+        </div>
+      </footer>
+    </div>
+
+    <!-- Script to set up Three.js visualizer -->
+    <script type="module" src="landing.js"></script>
+  </body>
+</html>
