@@ -15,7 +15,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 require_once 'db.php';
 
 // Key for JWT signing
-define('JWT_SECRET', 'SahasraBarathSecretKey2026!EnterpriseAgroForestrySystemSecret');
+define('JWT_SECRET', 'sahasrabharatSecretKey2026!EnterpriseAgroForestrySystemSecret');
 
 // Helper to base64UrlEncode
 function base64UrlEncode($data) {
@@ -138,9 +138,28 @@ if (basename($_SERVER['SCRIPT_FILENAME']) === 'auth.php') {
                 exit;
             }
             
+            // Comprehensive validations
+            if (!filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
+                http_response_code(400);
+                echo json_encode(["error" => "Invalid email format"]);
+                exit;
+            }
+            if (strlen($data['password']) < 8) {
+                http_response_code(400);
+                echo json_encode(["error" => "Password must be at least 8 characters long"]);
+                exit;
+            }
+            if (!preg_match('/^\+?[0-9\s\-]{10,15}$/', $data['contact_number'])) {
+                http_response_code(400);
+                echo json_encode(["error" => "Invalid contact number format"]);
+                exit;
+            }
             try {
-                // Generate secure random Farmer ID
-                $farmer_id = 'SB-' . random_int(100000, 999999);
+                $role = isset($data['role']) && $data['role'] === 'buyer' ? 'buyer' : 'farmer';
+                
+                // Generate secure random ID based on role
+                $prefix = $role === 'buyer' ? 'BUY-' : 'SB-';
+                $farmer_id = $prefix . random_int(100000, 999999);
                 $farmer_id_hash = password_hash($farmer_id, PASSWORD_DEFAULT);
                 $password_hash = password_hash($data['password'], PASSWORD_DEFAULT);
                 
@@ -156,12 +175,14 @@ if (basename($_SERVER['SCRIPT_FILENAME']) === 'auth.php') {
                 }
                 
                 // Create user
-                $stmt = $pdo->prepare("INSERT INTO users (farmer_id, farmer_id_hash, email, password_hash, role, status, contact_number) VALUES (:farmer_id, :farmer_id_hash, :email, :password_hash, 'farmer', 'active', :contact_number)");
+                $stmt = $pdo->prepare("INSERT INTO users (farmer_id, farmer_id_hash, email, name, password_hash, role, status, contact_number) VALUES (:farmer_id, :farmer_id_hash, :email, :name, :password_hash, :role, 'active', :contact_number)");
                 $stmt->execute([
                     'farmer_id' => $farmer_id,
                     'farmer_id_hash' => $farmer_id_hash,
                     'email' => $data['email'],
+                    'name' => $data['farmer_name'],
                     'password_hash' => $password_hash,
+                    'role' => $role,
                     'contact_number' => $data['contact_number']
                 ]);
                 
@@ -256,3 +277,4 @@ if (basename($_SERVER['SCRIPT_FILENAME']) === 'auth.php') {
     http_response_code(400);
     echo json_encode(["error" => "Invalid action"]);
 }
+

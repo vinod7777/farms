@@ -37,7 +37,7 @@ export default function AdminDashboard() {
 
   const fetchFarms = async () => {
     try {
-      const res = await fetch('/api/admin/farms.php');
+      const res = await fetch('api/admin/farms.php');
       const data = await res.json();
       if (data.farms) {
         setFarms(data.farms);
@@ -55,7 +55,7 @@ export default function AdminDashboard() {
 
   const acceptFarm = async (id) => {
     try {
-      const res = await fetch('/api/admin/farms.php', {
+      const res = await fetch('api/admin/farms.php', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ id, status: 'accepted' })
@@ -74,7 +74,7 @@ export default function AdminDashboard() {
   return (
     <div className="flex flex-col h-screen bg-gray-100">
       <header className="bg-white shadow px-8 py-4 flex justify-between items-center z-10">
-        <h1 className="text-2xl font-bold text-gray-800">Sahasra Barath - Admin Dashboard</h1>
+        <h1 className="text-2xl font-bold text-gray-800">Sahasra Bharat - Admin Dashboard</h1>
         <div className="flex gap-4">
           <span className="flex items-center gap-2 text-sm font-medium">
             <span className="w-4 h-4 bg-orange-500 rounded-full inline-block"></span> Pending
@@ -148,3 +148,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

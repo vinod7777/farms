@@ -1,7 +1,27 @@
 <?php
-ini_set('display_errors', 0);
 error_reporting(E_ALL);
+ini_set('display_errors', 0);
 
+// Global exception and error handler to ensure JSON output even on fatal errors
+set_exception_handler(function($e) {
+    http_response_code(500);
+    echo json_encode(["error" => "Uncaught Exception: " . $e->getMessage() . " in " . $e->getFile() . " on line " . $e->getLine()]);
+    exit;
+});
+
+set_error_handler(function($severity, $message, $file, $line) {
+    if (!(error_reporting() & $severity)) { return; }
+    throw new ErrorException($message, 0, $severity, $file, $line);
+});
+
+register_shutdown_function(function() {
+    $error = error_get_last();
+    if ($error !== null && in_array($error['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR])) {
+        http_response_code(500);
+        echo json_encode(["error" => "Fatal Error: " . $error['message'] . " in " . $error['file'] . " on line " . $error['line']]);
+        exit;
+    }
+});
 header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: POST, GET, OPTIONS");
 header("Access-Control-Allow-Headers: Content-Type, Authorization");
@@ -91,13 +111,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $sub_lng = floatval($coord_matches[1]);
     $sub_lat = floatval($coord_matches[2]);
     
-    // Verify farm ownership
-    $farm_check = $pdo->prepare("SELECT id, status FROM farms WHERE id = :farm_id AND (farmer_id = :farmer_id OR :role = 'admin')");
-    $farm_check->execute([
-        'farm_id' => $farm_id,
-        'farmer_id' => $user['farmer_id'] ?? '',
-        'role' => $user['role']
-    ]);
+    // Verify farm ownership and boundary
+    if ($user['role'] === 'admin') {
+        $farm_check = $pdo->prepare("SELECT id, status, ST_Contains(ST_Buffer(boundary_polygon, 0.0001), ST_GeomFromText(:coords)) AS is_inside FROM farms WHERE id = :farm_id");
+        $farm_check->execute([
+            'farm_id' => $farm_id,
+            'coords' => $coordinates
+        ]);
+    } else {
+        $farm_check = $pdo->prepare("SELECT id, status, ST_Contains(ST_Buffer(boundary_polygon, 0.0001), ST_GeomFromText(:coords)) AS is_inside FROM farms WHERE id = :farm_id AND farmer_id = :farmer_id");
+        $farm_check->execute([
+            'farm_id' => $farm_id,
+            'farmer_id' => $user['farmer_id'] ?? '',
+            'coords' => $coordinates
+        ]);
+    }
     $farm = $farm_check->fetch();
     
     if (!$farm) {
@@ -106,77 +134,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     
-    // File validation
-    $file = $_FILES['photo'];
-    $allowedTypes = ['image/jpeg', 'image/jpg'];
-    if (!in_array($file['type'], $allowedTypes)) {
-        http_response_code(400);
-        echo json_encode(["error" => "Only JPEG/JPG photos are allowed to support EXIF metadata checks."]);
+    // Geofencing Check
+    if ($farm['is_inside'] != 1 && $user['role'] !== 'admin') {
+        http_response_code(403);
+        echo json_encode(["error" => "Security Check Failed: You must be physically inside the farm boundaries to register a tree."]);
         exit;
     }
     
-    // Create uploads directory if it doesn't exist
-    $uploadDir = '../uploads/';
+    // File validation
+    $file = $_FILES['photo'];
+    
+    if ($file['error'] !== UPLOAD_ERR_OK) {
+        http_response_code(400);
+        echo json_encode(["error" => "File upload failed with error code: " . $file['error']]);
+        exit;
+    }
+
+    $allowedTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!in_array($file['type'], $allowedTypes)) {
+        http_response_code(400);
+        echo json_encode(["error" => "Only JPEG/JPG/PNG photos are allowed."]);
+        exit;
+    }
+    
+    // Create uploads directory safely
+    $uploadDir = __DIR__ . '/../uploads/';
     if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+        @mkdir($uploadDir, 0755, true);
     }
     
     $fileExt = pathinfo($file['name'], PATHINFO_EXTENSION);
     $fileName = 'plant_' . uniqid() . '.' . $fileExt;
     $targetPath = $uploadDir . $fileName;
     
-    if (move_uploaded_file($file['tmp_name'], $targetPath)) {
-        // Run EXIF validation
-        $exif_data = getGpsFromExif($targetPath);
-        
-        if (!$exif_data) {
-            // Remove file and reject
-            unlink($targetPath);
-            logAudit($pdo, $user['id'], 'EXIF_CHECK_FAILED', "Uploaded photo for Farm $farm_id lacked GPS metadata");
-            http_response_code(400);
-            echo json_encode(["error" => "Photo verification failed: Image lacks embedded GPS EXIF metadata. Please capture using your device camera with location services enabled."]);
-            exit;
+    // Suppress warnings on move_uploaded_file to prevent JSON corruption
+    if (@move_uploaded_file($file['tmp_name'], $targetPath)) {
+        // Run EXIF validation (for JPEG/JPG files)
+        $exif_data = null;
+        if (in_array(strtolower($fileExt), ['jpg', 'jpeg'])) {
+            $exif_data = getGpsFromExif($targetPath);
         }
         
-        // Check coordinate matches (tolerance of ~100m, which is approx 0.001 degrees)
-        $lat_diff = abs($exif_data['latitude'] - $sub_lat);
-        $lng_diff = abs($exif_data['longitude'] - $sub_lng);
+        $gps_match_status = 'no_metadata';
         
-        if ($lat_diff > 0.001 || $lng_diff > 0.001) {
-            unlink($targetPath);
-            logAudit($pdo, $user['id'], 'EXIF_GPS_MISMATCH', "Farm $farm_id plant coordinates (lat: $sub_lat, lng: $sub_lng) mismatched EXIF coordinates (lat: {$exif_data['latitude']}, lng: {$exif_data['longitude']})");
-            http_response_code(400);
-            echo json_encode([
-                "error" => "Photo verification failed: The GPS coordinates embedded in the photo do not match the location where you mapped this plant.",
-                "details" => [
-                    "submitted" => ["lat" => $sub_lat, "lng" => $sub_lng],
-                    "photo" => ["lat" => $exif_data['latitude'], "lng" => $exif_data['longitude']]
-                ]
-            ]);
-            exit;
+        if ($exif_data) {
+            // Check coordinate matches (tolerance of ~100m, which is approx 0.001 degrees)
+            $lat_diff = abs($exif_data['latitude'] - $sub_lat);
+            $lng_diff = abs($exif_data['longitude'] - $sub_lng);
+            
+            if ($lat_diff <= 0.001 && $lng_diff <= 0.001) {
+                $gps_match_status = 'matched';
+            } else {
+                $gps_match_status = 'mismatched';
+            }
         }
+        
+        // Determine material cost based on species
+        $species_lower = strtolower(trim($species));
+        $material_cost = 50.00; // default
+        if ($species_lower === 'teak') {
+            $material_cost = 100.00;
+        } elseif ($species_lower === 'mango') {
+            $material_cost = 120.00;
+        } elseif ($species_lower === 'bamboo') {
+            $material_cost = 40.00;
+        } elseif ($species_lower === 'cashew') {
+            $material_cost = 150.00;
+        } elseif ($species_lower === 'agarwood' || $species_lower === 'adharwood') {
+            $material_cost = 250.00;
+        }
+        
+        // Estimated delivery: current date + 7 days
+        $est_delivery = date('Y-m-d', strtotime('+7 days'));
         
         try {
             $stmt = $pdo->prepare("
-                INSERT INTO plants (farm_id, species, coordinates, photo_url) 
-                VALUES (:farm_id, :species, ST_GeomFromText(:coordinates, 4326), :photo_url)
+                INSERT INTO plants (farm_id, species, coordinates, photo_url, status, gps_match_status, material_cost, estimated_delivery_date, delivery_status) 
+                VALUES (:farm_id, :species, ST_GeomFromText(:coordinates, 4326), :photo_url, 'pending', :gps_match_status, :material_cost, :est_delivery, 'pending')
             ");
             $stmt->execute([
                 'farm_id' => $farm_id,
                 'species' => $species,
                 'coordinates' => $coordinates,
-                'photo_url' => 'uploads/' . $fileName
+                'photo_url' => 'uploads/' . $fileName,
+                'gps_match_status' => $gps_match_status,
+                'material_cost' => $material_cost,
+                'est_delivery' => $est_delivery
             ]);
             
             $plant_id = $pdo->lastInsertId();
             
-            logAudit($pdo, $user['id'], 'PLANT_REGISTERED', "Registered plant ID $plant_id (Species: $species) on Farm $farm_id");
+            logAudit($pdo, $user['id'], 'PLANT_SUBMITTED', "Submitted plant ID $plant_id (Species: $species) on Farm $farm_id (GPS Verification: $gps_match_status)");
             
             echo json_encode([
                 "success" => true,
-                "message" => "Tree verified and registered successfully.",
+                "message" => "Tree submitted successfully and is pending admin approval.",
                 "plant_id" => $plant_id,
-                "photo_url" => 'uploads/' . $fileName
+                "photo_url" => 'uploads/' . $fileName,
+                "gps_match_status" => $gps_match_status
             ]);
         } catch (PDOException $e) {
             unlink($targetPath);
@@ -199,12 +254,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $farm_id = intval($_GET['farm_id']);
     
     // Check access permissions
-    $farm_check = $pdo->prepare("SELECT id FROM farms WHERE id = :farm_id AND (farmer_id = :farmer_id OR :role = 'admin')");
-    $farm_check->execute([
-        'farm_id' => $farm_id,
-        'farmer_id' => $user['farmer_id'] ?? '',
-        'role' => $user['role']
-    ]);
+    if ($user['role'] === 'admin') {
+        $farm_check = $pdo->prepare("SELECT id FROM farms WHERE id = :farm_id");
+        $farm_check->execute(['farm_id' => $farm_id]);
+    } else {
+        $farm_check = $pdo->prepare("SELECT id FROM farms WHERE id = :farm_id AND farmer_id = :farmer_id");
+        $farm_check->execute([
+            'farm_id' => $farm_id,
+            'farmer_id' => $user['farmer_id'] ?? ''
+        ]);
+    }
     
     if (!$farm_check->fetch()) {
         http_response_code(403);
@@ -214,7 +273,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     
     try {
         $stmt = $pdo->prepare("
-            SELECT id, farm_id, species, ST_AsText(coordinates) as coordinates, photo_url, planted_at 
+            SELECT id, farm_id, species, ST_AsText(coordinates) as coordinates, photo_url, status, gps_match_status, material_cost, estimated_delivery_date, delivery_status, planted_at 
             FROM plants 
             WHERE farm_id = :farm_id
         ");

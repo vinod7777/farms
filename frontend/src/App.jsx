@@ -2,6 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import FarmerPortal from './components/FarmerPortal';
 import AdminPortal from './components/AdminPortal';
+import LandingPage from './components/LandingPage';
+import VisitFarmPage from './components/VisitFarmPage';
+import BuyerPortal from './components/BuyerPortal';
 
 function LoginScreen() {
   const navigate = useNavigate();
@@ -17,6 +20,7 @@ function LoginScreen() {
   const [email, setEmail] = useState('');
   const [contactNumber, setContactNumber] = useState('');
   const [regPassword, setRegPassword] = useState('');
+  const [regRole, setRegRole] = useState('farmer');
   
   // UI States
   const [loading, setLoading] = useState(false);
@@ -37,6 +41,8 @@ function LoginScreen() {
         const user = JSON.parse(userJson);
         if (user.role === 'admin') {
           navigate('/admin');
+        } else if (user.role === 'buyer') {
+          navigate('/buyer');
         } else {
           navigate('/farmer');
         }
@@ -46,16 +52,34 @@ function LoginScreen() {
     }
   }, [navigate]);
 
+  const validateEmail = (email) => {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  };
+
+  const validatePhone = (phone) => {
+    return /^(?:\+91|91)?[6-9]\d{9}$/.test(phone.replace(/\s|-/g, ''));
+  };
+
+  const validatePassword = (password) => {
+    return password.length >= 8 && /[A-Z]/.test(password) && /[0-9]/.test(password);
+  };
+
   const handleLogin = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+
+    if (!loginId.trim() || !password.trim()) {
+      setError('Please enter both Email/Farmer ID and Password.');
+      setLoading(false);
+      return;
+    }
     
     try {
       const response = await fetch('api/auth.php?action=login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login_id: loginId, password })
+        body: JSON.stringify({ login_id: loginId.trim(), password })
       });
       const data = await response.json();
       
@@ -65,6 +89,8 @@ function LoginScreen() {
         
         if (data.user.role === 'admin') {
           navigate('/admin');
+        } else if (data.user.role === 'buyer') {
+          navigate('/buyer');
         } else {
           navigate('/farmer');
         }
@@ -80,6 +106,27 @@ function LoginScreen() {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    
+    if (!farmerName.trim() || farmerName.length < 3) {
+      setError('Please enter a valid full name (at least 3 characters).');
+      return;
+    }
+
+    if (!validateEmail(email)) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+
+    if (!validatePhone(contactNumber)) {
+      setError('Please enter a valid 10-digit Indian contact number.');
+      return;
+    }
+
+    if (!validatePassword(regPassword)) {
+      setError('Password must be at least 8 characters long, contain a number, and an uppercase letter.');
+      return;
+    }
+
     setLoading(true);
     setError('');
     setSuccess('');
@@ -90,10 +137,11 @@ function LoginScreen() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          farmer_name: farmerName,
-          email,
-          contact_number: contactNumber,
-          password: regPassword
+          farmer_name: farmerName.trim(),
+          email: email.trim(),
+          contact_number: contactNumber.trim(),
+          password: regPassword,
+          role: regRole
         })
       });
       const data = await response.json();
@@ -117,15 +165,24 @@ function LoginScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/20">
-      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-md p-8 rounded-3xl border border-slate-800 shadow-2xl">
+    <div className="min-h-screen bg-slate-950 flex items-center justify-center p-6 bg-gradient-to-br from-slate-950 via-slate-900 to-emerald-950/20 relative">
+      <button 
+        onClick={() => navigate('/')} 
+        className="absolute top-6 left-6 text-slate-400 hover:text-emerald-400 flex items-center gap-2 font-medium transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+        </svg>
+        Back to Home
+      </button>
+      <div className="w-full max-w-md bg-slate-900/80 backdrop-blur-md p-8 rounded-3xl border border-slate-800 shadow-2xl relative">
         <div className="flex items-center gap-3 justify-center mb-8">
           <div className="w-10 h-10 bg-emerald-500 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-500/20">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-black" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5">
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364-6.364l-.707.707M6.343 17.657l-.707.707m0-12.728l.707.707m12.728 12.728l.707-.707M12 8a4 4 0 100 8 4 4 0 000-8z" />
             </svg>
           </div>
-          <span className="text-2xl font-bold tracking-tight text-white">Sahasra Barath</span>
+          <span className="text-2xl font-bold tracking-tight text-white">Sahasra Bharat</span>
         </div>
 
         {error && (
@@ -139,11 +196,11 @@ function LoginScreen() {
             <p className="font-bold text-sm">{success}</p>
             {registeredId && (
               <div className="mt-3 p-3 bg-slate-950/80 rounded-xl border border-slate-800 flex items-center justify-between">
-                <span className="text-xs text-slate-400 font-semibold">Your Farmer ID</span>
+                <span className="text-xs text-slate-400 font-semibold">Your ID</span>
                 <span className="font-mono text-lg font-bold text-emerald-400">{registeredId}</span>
               </div>
             )}
-            <p className="text-xs text-slate-400 mt-2">Make sure to save your Farmer ID. Use it or your Email to log in.</p>
+            <p className="text-xs text-slate-400 mt-2">Make sure to save your ID. Use it or your Email to log in.</p>
           </div>
         )}
 
@@ -178,7 +235,7 @@ function LoginScreen() {
             </button>
 
             <p className="text-center text-sm text-slate-400 mt-4">
-              Need to register your land?{' '}
+              Need an account?{' '}
               <button 
                 type="button" 
                 onClick={() => setIsRegister(true)} 
@@ -189,10 +246,20 @@ function LoginScreen() {
             </p>
           </form>
         ) : (
-          <form onSubmit={handleRegister} className="space-y-5">
-            <h2 className="text-xl font-bold text-white mb-2">Farmer Registration</h2>
+          <form onSubmit={handleRegister} className="space-y-4">
+            <h2 className="text-xl font-bold text-white mb-2">Create Account</h2>
+            
+            <div className="flex bg-slate-950 p-1 rounded-xl border border-slate-800">
+              <button type="button" onClick={() => setRegRole('farmer')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${regRole === 'farmer' ? 'bg-emerald-500 text-black' : 'text-slate-400 hover:text-white'}`}>
+                Farmer (Sell & Buy)
+              </button>
+              <button type="button" onClick={() => setRegRole('buyer')} className={`flex-1 py-2 text-xs font-bold uppercase tracking-wider rounded-lg transition ${regRole === 'buyer' ? 'bg-emerald-500 text-black' : 'text-slate-400 hover:text-white'}`}>
+                Buyer Only
+              </button>
+            </div>
+
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Full Name</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Full Name</label>
               <input 
                 type="text" required placeholder="John Doe"
                 className="w-full bg-slate-950 text-white border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-2xl px-4 py-3 outline-none transition"
@@ -214,7 +281,9 @@ function LoginScreen() {
             <div>
               <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Contact Number</label>
               <input 
-                type="text" required placeholder="e.g. +91 98765 43210"
+                type="tel" required placeholder="e.g. +91 9876543210"
+                pattern="^\+?[0-9\s\-]{10,15}$"
+                title="Contact number must be 10-15 digits, optionally starting with +"
                 className="w-full bg-slate-950 text-white border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-2xl px-4 py-3 outline-none transition"
                 value={contactNumber}
                 onChange={(e) => setContactNumber(e.target.value)}
@@ -222,10 +291,12 @@ function LoginScreen() {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Password</label>
+              <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Password</label>
               <input 
                 type="password" required placeholder="••••••••"
-                className="w-full bg-slate-950 text-white border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-2xl px-4 py-3 outline-none transition"
+                minLength="8"
+                title="Password must be at least 8 characters long"
+                className="w-full bg-slate-950 text-white border border-slate-800 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 rounded-2xl px-4 py-2.5 text-sm outline-none transition"
                 value={regPassword}
                 onChange={(e) => setRegPassword(e.target.value)}
               />
@@ -233,7 +304,7 @@ function LoginScreen() {
 
             <button 
               type="submit" disabled={loading}
-              className="w-full py-3.5 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-2xl tracking-wide transition shadow-lg shadow-emerald-500/10 disabled:opacity-50"
+              className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-2xl tracking-wide transition shadow-lg shadow-emerald-500/10 disabled:opacity-50 mt-2"
             >
               {loading ? 'Creating Account...' : 'Submit Registration'}
             </button>
@@ -280,12 +351,26 @@ export default function App() {
   return (
     <HashRouter>
       <Routes>
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<LoginScreen />} />
+        
+        {/* Public Pages */}
+        <Route path="/visit" element={<VisitFarmPage />} />
+
+        {/* Farmer Routes */}
         <Route 
           path="/farmer" 
           element={
-            <ProtectedRoute role="farmer">
+            <ProtectedRoute requiredRole="farmer">
               <FarmerPortal />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/buyer" 
+          element={
+            <ProtectedRoute requiredRole="buyer">
+              <BuyerPortal />
             </ProtectedRoute>
           } 
         />
@@ -297,8 +382,9 @@ export default function App() {
             </ProtectedRoute>
           } 
         />
-        <Route path="*" element={<Navigate to="/login" replace />} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </HashRouter>
   );
 }
+

@@ -13,14 +13,17 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        main: resolve(__dirname, 'index.html'),
-        portal: resolve(__dirname, 'portal.html')
+        main: resolve(__dirname, 'index.html')
       }
     }
   },
   server: {
     proxy: {
       '/api': {
+        target: 'http://localhost/farm',
+        changeOrigin: true,
+      },
+      '/uploads': {
         target: 'http://localhost/farm',
         changeOrigin: true,
       }

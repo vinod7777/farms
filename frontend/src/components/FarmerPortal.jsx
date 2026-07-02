@@ -4,6 +4,11 @@ import { MapContainer, TileLayer, Polygon, Marker, CircleMarker, Popup, useMapEv
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
+import ProductsPage from './ProductsPage';
+import RentalsPage from './RentalsPage';
+import BulkOrdersPage from './BulkOrdersPage';
+import MyOrders from './MyOrders';
+
 // Fix for default Leaflet marker icon in React
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
@@ -26,6 +31,22 @@ function ChangeView({ center, zoom }) {
   }, [center, zoom]);
   return null;
 }
+
+// Helper to parse WKT POLYGON((lng1 lat1, lng2 lat2, ...)) to Leaflet LatLng arrays [ [lat, lng], ... ]
+const parseWKT = (wkt) => {
+  if (!wkt) return [];
+  const match = wkt.match(/\(\((.*?)\)\)/);
+  if (!match) return [];
+  const pointsStr = match[1];
+  const points = pointsStr.split(',').map(point => {
+    const [lng, lat] = point.trim().split(' ').map(Number);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      return [lat, lng]; // Leaflet expects [lat, lng]
+    }
+    return null;
+  }).filter(Boolean);
+  return points;
+};
 
 // Click listener inside React Leaflet
 function MapEventsHandler({ onMapClick }) {
@@ -137,7 +158,7 @@ export default function FarmerPortal() {
   const [activeTab, setActiveTab] = useState('dashboard');
 
   // Dark/Light Theme state
-  const [theme, setTheme] = useState(localStorage.getItem('sb_theme') || 'dark');
+  const [theme, setTheme] = useState(localStorage.getItem('sb_theme') || 'light');
 
   const [farms, setFarms] = useState([]);
   const [selectedFarm, setSelectedFarm] = useState(null);
@@ -147,6 +168,25 @@ export default function FarmerPortal() {
   const [syncing, setSyncing] = useState(false);
   const [totalPlantsCount, setTotalPlantsCount] = useState(0);
   
+  // New Land Form Details States
+  const [farmName, setFarmName] = useState('');
+  const [farmingType, setFarmingType] = useState('agroforest');
+  const [soilType, setSoilType] = useState('');
+  const [waterSource, setWaterSource] = useState('');
+  const [irrigationSystem, setIrrigationSystem] = useState('none');
+  const [cropInsurance, setCropInsurance] = useState('no');
+  const [visitSlot, setVisitSlot] = useState('');
+  const [leaseYears, setLeaseYears] = useState('3');
+  const [documentFiles, setDocumentFiles] = useState([]);
+
+  // E-commerce & Cart States
+  const [cart, setCart] = useState([]);
+  const [showBuyNowModal, setShowBuyNowModal] = useState(false);
+  const [buyNowItem, setBuyNowItem] = useState(null);
+  const [buyNowQuantity, setBuyNowQuantity] = useState(1);
+  const [buyNowAddress, setBuyNowAddress] = useState('');
+  const [cartAddress, setCartAddress] = useState('');
+
   // Land Mapping States
   const [mappingActive, setMappingActive] = useState(false);
   const [mapType, setMapType] = useState('management_support');
@@ -161,6 +201,7 @@ export default function FarmerPortal() {
 
   // Plant Submission States
   const [plantSpecies, setPlantSpecies] = useState('Teak');
+  const [customSpecies, setCustomSpecies] = useState('');
   const [plantFile, setPlantFile] = useState(null);
   const [plantCoordinates, setPlantCoordinates] = useState(null); 
   const [plantLoading, setPlantLoading] = useState(false);
@@ -168,6 +209,7 @@ export default function FarmerPortal() {
   const fileInputRef = useRef(null);
 
   const [farmMessage, setFarmMessage] = useState({ type: '', text: '' });
+  const [selectedPlant, setSelectedPlant] = useState(null);
 
   // Theme Toggler
   const toggleTheme = () => {
@@ -177,12 +219,12 @@ export default function FarmerPortal() {
   };
 
   const isDark = theme === 'dark';
-  const bgClass = isDark ? 'bg-slate-950 text-slate-100' : 'bg-slate-50 text-slate-900';
-  const sidebarClass = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
-  const cardClass = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200 shadow-md';
-  const inputClass = isDark ? 'bg-slate-950 border-slate-800 text-slate-200 focus:border-emerald-500' : 'bg-slate-100 border-slate-200 text-slate-800 focus:border-emerald-600';
+  const bgClass = isDark ? 'bg-[#060a07] text-slate-100' : 'bg-slate-50 text-slate-900';
+  const sidebarClass = isDark ? 'sidebar-glass text-slate-100' : 'sidebar-glass-light text-slate-900';
+  const cardClass = isDark ? 'glass-card card-hover-effect' : 'glass-card-light card-hover-effect-light';
+  const inputClass = isDark ? 'bg-[#111e16] border-emerald-500/10 text-slate-200 focus:border-emerald-500/40 focus:ring-1 focus:ring-emerald-500/30' : 'bg-slate-100 border-slate-200 text-slate-800 focus:border-emerald-600';
   const textMutedClass = isDark ? 'text-slate-400' : 'text-slate-500';
-  const innerCardClass = isDark ? 'bg-slate-950 border-slate-800' : 'bg-slate-100 border-slate-200';
+  const innerCardClass = isDark ? 'bg-[#111e16] border border-emerald-500/10' : 'bg-slate-100 border border-slate-200';
 
   // Fetch registered farms
   const fetchFarms = async () => {
@@ -373,7 +415,7 @@ export default function FarmerPortal() {
           setCalculatedPerimeter(totalDist);
         }
         if (newPath.length >= 3) {
-          const sqMeters = calculatePolygonAreaSqMeters(newPath);
+          const sqMeters = Math.abs(calculatePolygonAreaSqMeters(newPath));
           const acres = sqMeters / 4046.86;
           setCalculatedAcres(acres);
         }
@@ -406,6 +448,16 @@ export default function FarmerPortal() {
     }
     setMappingActive(false);
     
+    if (!farmName.trim() || farmName.length < 3) {
+      alert("Please enter a valid farm name (at least 3 characters) before saving.");
+      return;
+    }
+
+    if (mapType === 'leased_to_platform' && (!leaseYears || isNaN(leaseYears) || parseInt(leaseYears) < 1)) {
+      alert("Please enter a valid number of lease years.");
+      return;
+    }
+
     if (trackedCoords.length < 3) {
       alert("A valid land boundary must contain at least 3 mapped corners.");
       return;
@@ -417,15 +469,51 @@ export default function FarmerPortal() {
     const boundaryPolygonWkt = `POLYGON((${coordsStr}))`;
     const finalAcres = calculatedAcres || 0.1;
     
-    const farmSubmission = {
-      type: mapType,
-      boundary_polygon: boundaryPolygonWkt,
-      total_area_acres: finalAcres.toFixed(4),
-      raw_coords: closedCoords,
-      date_logged: new Date().toISOString()
-    };
+    if (!documentFiles || documentFiles.length === 0) {
+      alert("Please upload at least one land document (PDF or Image).");
+      return;
+    }
+    
+    setLoading(true);
+    let finalDocumentUrl = null;
     
     try {
+      if (documentFiles && documentFiles.length > 0) {
+        finalDocumentUrl = [];
+        for (const file of documentFiles) {
+          const formData = new FormData();
+          formData.append('document', file);
+          const uploadRes = await fetch('api/upload_document.php', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` },
+            body: formData
+          });
+          const uploadData = await uploadRes.json();
+          if (uploadRes.ok && uploadData.success) {
+            finalDocumentUrl.push(uploadData.url);
+          } else {
+            throw new Error(uploadData.error || `Failed to upload document: ${file.name}`);
+          }
+        }
+      }
+      
+      const farmSubmission = {
+        name: farmName.trim(),
+        type: mapType,
+        farming_type: farmingType,
+        soil_type: soilType || null,
+        water_source: waterSource || null,
+        irrigation_system: irrigationSystem || null,
+        crop_insurance: cropInsurance,
+        visit_slot: visitSlot || null,
+        lease_years: mapType === 'leased_to_platform' ? parseInt(leaseYears) : null,
+        boundary_polygon: boundaryPolygonWkt,
+        total_area_acres: finalAcres.toFixed(4),
+        document_urls: finalDocumentUrl,
+        raw_coords: closedCoords,
+        date_logged: new Date().toISOString()
+      };
+    
       const res = await fetch('api/farms.php', {
         method: 'POST',
         headers: {
@@ -443,6 +531,15 @@ export default function FarmerPortal() {
       if (res.ok && data.success) {
         setFarmMessage({ type: 'success', text: "Boundary submitted to admin successfully!" });
         fetchFarms();
+        // Reset form details
+        setFarmName('');
+        setFarmingType('agroforest');
+        setSoilType('');
+        setWaterSource('');
+        setIrrigationSystem('none');
+        setCropInsurance('no');
+        setVisitSlot('');
+        setLeaseYears(3);
       } else {
         throw new Error(data.error || "Server registration failed.");
       }
@@ -470,7 +567,15 @@ export default function FarmerPortal() {
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
+            name: cached.name,
             type: cached.type,
+            farming_type: cached.farming_type,
+            soil_type: cached.soil_type,
+            water_source: cached.water_source,
+            irrigation_system: cached.irrigation_system,
+            crop_insurance: cached.crop_insurance,
+            visit_slot: (cached.visit_slot === 'saturday' || cached.visit_slot === 'sunday' || !cached.visit_slot) ? new Date().toISOString().split('T')[0] : cached.visit_slot,
+            lease_years: cached.lease_years,
             boundary_polygon: cached.boundary_polygon,
             total_area_acres: cached.total_area_acres
           })
@@ -531,14 +636,27 @@ export default function FarmerPortal() {
   const handlePlantSubmit = async (e) => {
     e.preventDefault();
     if (!selectedFarm) return;
-    if (!plantFile || !plantCoordinates) return;
+    if (!plantFile) {
+      setPlantMessage({ type: 'error', text: 'Please capture or select a photo of the tree.' });
+      return;
+    }
+    if (!plantCoordinates) {
+      setPlantMessage({ type: 'error', text: 'GPS location is required. Please ensure location services are enabled.' });
+      return;
+    }
+
+    const finalSpecies = plantSpecies === 'Other' ? customSpecies.trim() : plantSpecies;
+    if (!finalSpecies) {
+      setPlantMessage({ type: 'error', text: 'Please specify the tree species.' });
+      return;
+    }
 
     setPlantLoading(true);
     setPlantMessage({ type: '', text: '' });
 
     const formData = new FormData();
     formData.append('farm_id', selectedFarm.id);
-    formData.append('species', plantSpecies);
+    formData.append('species', finalSpecies);
     formData.append('coordinates', `POINT(${plantCoordinates.lng} ${plantCoordinates.lat})`);
     formData.append('photo', plantFile);
 
@@ -548,7 +666,19 @@ export default function FarmerPortal() {
         headers: { 'Authorization': `Bearer ${token}` },
         body: formData
       });
-      const data = await res.json();
+      
+      const rawText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        // If Hostinger returns HTML (like a 403 Forbidden or PHP warning)
+        const strippedText = rawText.replace(/(<([^>]+)>)/gi, "").trim();
+        setPlantMessage({ type: 'error', text: `Server Error (${res.status}): ${strippedText.substring(0, 100)}...` });
+        setPlantLoading(false);
+        return;
+      }
+      
       if (res.ok && data.success) {
         setPlantMessage({ type: 'success', text: "Tree uploaded and GPS-EXIF verified successfully!" });
         setPlantFile(null);
@@ -560,7 +690,7 @@ export default function FarmerPortal() {
         setPlantMessage({ type: 'error', text: data.error || "Upload failed." });
       }
     } catch (err) {
-      setPlantMessage({ type: 'error', text: "Network error occurred." });
+      setPlantMessage({ type: 'error', text: `Network Error: ${err.message}` });
     } finally {
       setPlantLoading(false);
     }
@@ -577,8 +707,55 @@ export default function FarmerPortal() {
   return (
     <div className={`min-h-screen flex flex-col lg:flex-row transition-colors duration-300 ${bgClass}`}>
       
-      {/* Sidebar Navigation */}
-      <aside className={`w-full lg:w-64 border-b lg:border-b-0 lg:border-r flex flex-col p-6 gap-6 lg:h-screen lg:fixed lg:top-0 lg:left-0 z-20 transition-colors duration-300 ${sidebarClass}`}>
+      {/* Mobile Top Header */}
+      <header className={`lg:hidden flex justify-between items-center p-4 border-b fixed top-0 w-full z-40 transition-colors duration-300 ${sidebarClass}`}>
+        <div className="flex items-center gap-3">
+          <img src="Logo-SF.webp" alt="Sahasra Bharat" className="h-8 w-auto object-contain" />
+          <span className={`text-xl font-extrabold ${isDark ? 'text-emerald-400' : 'text-emerald-700'}`}>Sahasra</span>
+          <span className="bg-emerald-950 text-emerald-300 text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase">Farmer</span>
+        </div>
+        <div className="flex items-center gap-3">
+          <button onClick={toggleTheme} className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 text-xs font-bold transition flex items-center justify-center">
+            {isDark ? '☀️' : '🌙'}
+          </button>
+          <button onClick={logout} className="p-2 rounded-xl bg-red-500/10 text-red-400 text-xs font-bold transition">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+               <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clipRule="evenodd" />
+            </svg>
+          </button>
+        </div>
+      </header>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className={`lg:hidden fixed bottom-0 left-0 w-full border-t flex justify-around items-center px-2 py-3 z-40 transition-colors duration-300 ${sidebarClass}`}>
+        <button onClick={() => window.scrollTo(0, 0) || setActiveTab('dashboard')} className={`flex flex-col items-center p-2 rounded-xl transition ${activeTab === 'dashboard' ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2H6a2 2 0 01-2-2v-4zM14 16a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2v-4z" /></svg>
+          <span className="text-[10px]">Dashboard</span>
+        </button>
+        <button onClick={() => window.scrollTo(0, 0) || setActiveTab('mapper')} className={`flex flex-col items-center p-2 rounded-xl transition ${activeTab === 'mapper' ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+          <span className="text-[10px]">Map</span>
+        </button>
+        <button onClick={() => window.scrollTo(0, 0) || setActiveTab('lands')} className={`flex flex-col items-center p-2 rounded-xl transition ${activeTab === 'lands' ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0022 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" /></svg>
+          <span className="text-[10px]">Lands</span>
+        </button>
+        <button onClick={() => window.scrollTo(0, 0) || setActiveTab('plants')} className={`flex flex-col items-center p-2 rounded-xl transition ${activeTab === 'plants' ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+          <span className="text-[10px]">Trees</span>
+        </button>
+        <button onClick={() => window.scrollTo(0, 0) || setActiveTab('products')} className={`flex flex-col items-center p-2 rounded-xl transition ${activeTab === 'products' ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" /></svg>
+          <span className="text-[10px]">Products</span>
+        </button>
+        <button onClick={() => window.scrollTo(0, 0) || setActiveTab('bulk')} className={`flex flex-col items-center p-2 rounded-xl transition ${activeTab === 'bulk' ? 'text-emerald-400 font-extrabold' : 'text-slate-400'}`}>
+          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
+          <span className="text-[10px]">Cart</span>
+        </button>
+      </nav>
+
+      {/* Sidebar Navigation (Desktop) */}
+      <aside className={`hidden lg:flex lg:w-64 border-r flex-col p-6 gap-6 h-screen fixed top-0 left-0 z-20 transition-colors duration-300 ${sidebarClass}`}>
         <div className="flex justify-between items-center">
           <div>
             <div className="flex items-center gap-2">
@@ -603,7 +780,7 @@ export default function FarmerPortal() {
 
         <div className={`text-[10px] font-bold uppercase tracking-wider ${textMutedClass}`}>Navigation</div>
         
-        <nav className="flex flex-col gap-2 flex-grow text-xs font-semibold">
+        <nav className="flex flex-col gap-2 flex-grow text-xs font-semibold overflow-y-auto min-h-0 pr-1 pb-2">
           <button 
             onClick={() => setActiveTab('dashboard')} 
             className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition ${
@@ -652,6 +829,56 @@ export default function FarmerPortal() {
             </svg>
             Plant Catalog
           </button>
+
+          <div className={`text-[10px] mt-4 font-bold uppercase tracking-wider ${textMutedClass}`}>Services</div>
+          
+          <button 
+            onClick={() => setActiveTab('products')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition ${
+              activeTab === 'products' ? 'bg-emerald-500 text-black font-extrabold shadow-lg shadow-emerald-500/10' : `text-slate-400 hover:text-white hover:bg-slate-800`
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+            </svg>
+            Products
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('rentals')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition ${
+              activeTab === 'rentals' ? 'bg-emerald-500 text-black font-extrabold shadow-lg shadow-emerald-500/10' : `text-slate-400 hover:text-white hover:bg-slate-800`
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+            </svg>
+            Rental Services
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('bulk')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition ${
+              activeTab === 'bulk' ? 'bg-emerald-500 text-black font-extrabold shadow-lg shadow-emerald-500/10' : `text-slate-400 hover:text-white hover:bg-slate-800`
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            Shopping Cart
+          </button>
+
+          <button 
+            onClick={() => setActiveTab('orders')} 
+            className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-left transition ${
+              activeTab === 'orders' ? 'bg-emerald-500 text-black font-extrabold shadow-lg shadow-emerald-500/10' : `text-slate-400 hover:text-white hover:bg-slate-800`
+            }`}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+            </svg>
+            My Orders
+          </button>
         </nav>
 
         <div className="flex flex-col gap-2 mt-auto border-t border-slate-800 pt-4 text-xs font-semibold">
@@ -671,7 +898,7 @@ export default function FarmerPortal() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-grow lg:ml-64 p-6 md:p-8 min-w-0">
+      <main className="flex-grow lg:ml-64 p-4 lg:p-8 pt-24 pb-28 lg:pt-8 lg:pb-8 min-w-0">
         
         {/* TAB 1: DASHBOARD SUMMARY */}
         {activeTab === 'dashboard' && (
@@ -715,7 +942,7 @@ export default function FarmerPortal() {
               </div>
               <button 
                 onClick={() => setActiveTab('mapper')}
-                className="px-6 py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-2xl text-xs transition whitespace-nowrap shadow-lg shadow-emerald-500/10"
+                className="px-6 py-3 gradient-btn text-black font-extrabold rounded-2xl text-xs transition whitespace-nowrap"
               >
                 Map New Boundary
               </button>
@@ -756,7 +983,7 @@ export default function FarmerPortal() {
                           <td className="py-3">
                             {f.lease_id ? (
                               <span className="text-[11px] font-semibold text-emerald-500">
-                                Active (${JSON.parse(f.lease_terms || '{}').amount}/{JSON.parse(f.lease_terms || '{}').schedule})
+                                Active
                               </span>
                             ) : (
                               <span className="text-[11px] text-slate-500">—</span>
@@ -803,23 +1030,182 @@ export default function FarmerPortal() {
                 {!mappingActive ? (
                   <div className="space-y-4">
                     <p className={`text-xs leading-relaxed ${textMutedClass}`}>
-                      Use the interactive drawing tools below to map the perimeter coordinates. Click points manually on the map or walk with device GPS enabled.
+                      Provide the land specifications and then open the boundary mapper.
                     </p>
-                    <div>
-                      <label className={`block text-xs font-bold uppercase tracking-wider mb-2 ${textMutedClass}`}>Registration Type</label>
-                      <select 
-                        value={mapType} 
-                        onChange={(e) => setMapType(e.target.value)}
-                        className={`w-full rounded-xl px-3 py-2.5 text-xs outline-none border focus:border-emerald-500 transition-colors ${inputClass}`}
-                      >
-                        <option value="management_support">Marketing / Support</option>
-                        <option value="leased_to_platform">Lease to Platform</option>
-                      </select>
-                    </div>
                     
+                    <div>
+                      <label className={`block text-xs font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Farm Name *</label>
+                      <input 
+                        type="text" required placeholder="e.g. Green Valley Farm"
+                        value={farmName}
+                        onChange={(e) => setFarmName(e.target.value)}
+                        className={`w-full rounded-xl px-3 py-2 text-xs outline-none border focus:border-emerald-500 transition-colors ${inputClass}`}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className={`block text-xs font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Registration Type</label>
+                        <select 
+                          value={mapType} 
+                          onChange={(e) => setMapType(e.target.value)}
+                          className={`w-full rounded-xl px-3 py-2.5 text-xs outline-none border focus:border-emerald-500 transition-colors ${inputClass}`}
+                        >
+                          <option value="management_support">Marketing / Support</option>
+                          <option value="leased_to_platform">Lease to Platform</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className={`block text-xs font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Farming Type *</label>
+                        <select 
+                          value={farmingType} 
+                          onChange={(e) => setFarmingType(e.target.value)}
+                          className={`w-full rounded-xl px-3 py-2.5 text-xs outline-none border focus:border-emerald-500 transition-colors ${inputClass}`}
+                        >
+                          <option value="hydroponics">Hydroponics</option>
+                          <option value="organic">Organic</option>
+                          <option value="zbnf">ZBNF</option>
+                          <option value="agroforest">Agroforestry</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {mapType === 'leased_to_platform' && (
+                      <div className="p-3 border rounded-xl flex flex-col gap-2 bg-emerald-500/5 border-emerald-500/10">
+                        <label className={`block text-xs font-bold uppercase tracking-wider ${textMutedClass}`}>Lease Duration (Years)</label>
+                        <div className="flex items-center gap-3">
+                          <input 
+                            type="number" min="3" max="99"
+                            value={leaseYears}
+                            onChange={(e) => setLeaseYears(e.target.value)}
+                            className={`w-24 rounded-xl px-3 py-2 text-xs outline-none border focus:border-emerald-500 transition-colors ${inputClass}`}
+                            required
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="mt-3 space-y-3 pt-1 border-t border-slate-800/40">
+                      <h3 className="text-xs font-bold text-slate-400">Land Details</h3>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={`block text-[10px] font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Soil Type *</label>
+                          <input 
+                            type="text" placeholder="e.g. Clay, Sandy, Loamy"
+                            value={soilType}
+                            onChange={(e) => setSoilType(e.target.value)}
+                            className={`w-full rounded-xl px-3 py-2 text-xs outline-none border ${inputClass}`}
+                            required
+                          />
+                        </div>
+                        <div>
+                          <label className={`block text-[10px] font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Water Source *</label>
+                          <input 
+                            type="text" placeholder="e.g. Borewell, River"
+                            value={waterSource}
+                            onChange={(e) => setWaterSource(e.target.value)}
+                            className={`w-full rounded-xl px-3 py-2 text-xs outline-none border ${inputClass}`}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className={`block text-[10px] font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Irrigation System *</label>
+                          <select 
+                            value={irrigationSystem} 
+                            onChange={(e) => setIrrigationSystem(e.target.value)}
+                            className={`w-full rounded-xl px-3 py-2 text-xs outline-none border ${inputClass}`}
+                            required
+                          >
+                            <option value="none">None</option>
+                            <option value="drip">Drip Irrigation</option>
+                            <option value="sprinkler">Sprinkler</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className={`block text-[10px] font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Crop Insurance *</label>
+                          <select 
+                            value={cropInsurance} 
+                            onChange={(e) => setCropInsurance(e.target.value)}
+                            className={`w-full rounded-xl px-3 py-2 text-xs outline-none border ${inputClass}`}
+                            required
+                          >
+                            <option value="no">No</option>
+                            <option value="yes">Yes</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className={`block text-[10px] font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Land Documents (Required, Multiple allowed, PDF/Image max 10MB each) *</label>
+                        <input 
+                          type="file" 
+                          multiple
+                          required
+                          accept=".pdf,.png,.jpg,.jpeg,.webp"
+                          onChange={(e) => setDocumentFiles(Array.from(e.target.files))}
+                          className={`w-full rounded-xl px-3 py-2 text-xs outline-none border ${inputClass}`}
+                        />
+                        {documentFiles.length > 0 && (
+                          <div className="mt-2 text-[10px] font-bold text-emerald-500">
+                            {documentFiles.length} file(s) selected
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className={`block text-[10px] font-bold uppercase tracking-wider mb-1 ${textMutedClass}`}>Preferred Visit Slot *</label>
+                        <input 
+                          type="date"
+                          value={visitSlot} 
+                          min={new Date().toISOString().split('T')[0]}
+                          onChange={(e) => {
+                            const dateValue = e.target.value;
+                            if (dateValue) {
+                              const dateObj = new Date(dateValue);
+                              const day = dateObj.getUTCDay();
+                              if (day !== 0 && day !== 6) {
+                                alert("Only Saturday and Sunday are available for visits.");
+                                setVisitSlot('');
+                                return;
+                              }
+                            }
+                            setVisitSlot(dateValue);
+                          }}
+                          className={`w-full rounded-xl px-3 py-2 text-xs outline-none border ${inputClass}`}
+                          required
+                        />
+                        <p className={`text-[9px] mt-1 ${textMutedClass}`}>Select a Saturday or Sunday (₹500 deposit required later).</p>
+                      </div>
+                    </div>
+
                     <button 
-                      onClick={startMapping}
-                      className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-2xl transition text-sm shadow-lg shadow-emerald-500/10 cursor-pointer"
+                      onClick={() => {
+                        if (!farmName.trim()) {
+                          alert("Please provide a Farm Name first.");
+                          return;
+                        }
+                        if (!soilType.trim()) {
+                          alert("Please provide the Soil Type.");
+                          return;
+                        }
+                        if (!waterSource.trim()) {
+                          alert("Please provide the Water Source.");
+                          return;
+                        }
+                        if (mapType === 'leased_to_platform') {
+                          const years = parseInt(leaseYears);
+                          if (isNaN(years) || years < 3) {
+                            alert("Lease Duration must be a number and at least 3 years.");
+                            return;
+                          }
+                        }
+                        startMapping();
+                      }}
+                      className="w-full py-3 gradient-btn text-black font-extrabold rounded-2xl transition text-sm cursor-pointer"
                     >
                       Start Boundary Walk / Map
                     </button>
@@ -869,6 +1255,22 @@ export default function FarmerPortal() {
                         </svg>
                         Recenter Map
                       </button>
+
+                      {/* Back Button overlay in map */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (watchIdRef.current !== null) {
+                            navigator.geolocation.clearWatch(watchIdRef.current);
+                            watchIdRef.current = null;
+                          }
+                          setMappingActive(false);
+                          setTrackedCoords([]);
+                        }}
+                        className="absolute top-4 left-4 z-[1000] bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-100 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 shadow-lg transition cursor-pointer"
+                      >
+                        &larr; Back
+                      </button>
                     </div>
 
                     <div className={`text-[10px] text-center ${textMutedClass}`}>
@@ -910,9 +1312,54 @@ export default function FarmerPortal() {
                     <div className="flex gap-3">
                       <button 
                         onClick={stopMapping}
-                        className="flex-grow py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-2xl transition text-sm font-bold shadow-lg cursor-pointer"
+                        className="flex-grow py-3 gradient-btn text-black font-extrabold rounded-2xl transition text-sm cursor-pointer"
                       >
                         Finish & Save Boundary
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setTrackedCoords((prev) => {
+                            if (prev.length === 0) return prev;
+                            const newPath = prev.slice(0, -1);
+                            if (newPath.length >= 2) {
+                              let totalDist = 0;
+                              for (let i = 0; i < newPath.length - 1; i++) {
+                                totalDist += getDistanceMeters(newPath[i][1], newPath[i][0], newPath[i + 1][1], newPath[i + 1][0]);
+                              }
+                              setCalculatedPerimeter(totalDist);
+                            } else {
+                              setCalculatedPerimeter(0);
+                            }
+                            if (newPath.length >= 3) {
+                              const sqMeters = calculatePolygonAreaSqMeters(newPath);
+                              const acres = sqMeters / 4046.86;
+                              setCalculatedAcres(acres);
+                            } else {
+                              setCalculatedAcres(0);
+                            }
+                            return newPath;
+                          });
+                        }}
+                        type="button"
+                        className={`px-4 py-3 border hover:bg-slate-500/10 font-semibold rounded-2xl transition text-xs cursor-pointer ${inputClass}`}
+                      >
+                        Undo
+                      </button>
+                      <button 
+                        onClick={() => {
+                          if (watchIdRef.current !== null) {
+                            navigator.geolocation.clearWatch(watchIdRef.current);
+                            watchIdRef.current = null;
+                          }
+                          setMappingActive(false);
+                          setTrackedCoords([]);
+                          setCalculatedAcres(0);
+                          setCalculatedPerimeter(0);
+                        }}
+                        type="button"
+                        className={`px-4 py-3 border hover:bg-slate-500/10 font-semibold rounded-2xl transition text-xs cursor-pointer ${inputClass}`}
+                      >
+                        Back
                       </button>
                       <button 
                         onClick={() => {
@@ -921,7 +1368,7 @@ export default function FarmerPortal() {
                           setCalculatedPerimeter(0);
                         }}
                         type="button"
-                        className={`px-5 py-3 border hover:bg-slate-500/10 font-semibold rounded-2xl transition text-xs cursor-pointer ${inputClass}`}
+                        className={`px-4 py-3 border hover:bg-slate-500/10 font-semibold rounded-2xl transition text-xs cursor-pointer ${inputClass}`}
                       >
                         Clear
                       </button>
@@ -1003,7 +1450,7 @@ export default function FarmerPortal() {
                     className={`p-5 rounded-3xl border flex flex-col justify-between hover:border-slate-500 transition-colors duration-200 ${cardClass}`}
                   >
                     <div className="flex justify-between items-start">
-                      <span className="font-bold text-sm capitalize">{farm.type.replace('_', ' ')}</span>
+                      <span className="font-bold text-sm capitalize">{farm.name || farm.type.replace('_', ' ')} (ID: {farm.id})</span>
                       <span className={`text-[9px] px-2 py-0.5 rounded-full font-bold uppercase ${
                         farm.status === 'verified' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/40' :
                         farm.status === 'rejected' ? 'bg-red-950 text-red-400 border border-red-800/40' : 'bg-orange-950 text-orange-400 border border-orange-800/40'
@@ -1035,12 +1482,6 @@ export default function FarmerPortal() {
                         <div className="flex justify-between text-[10px]">
                           <span className={textMutedClass}>Contract ID:</span>
                           <span className="font-mono font-bold">SB-LEASE-{farm.lease_id}</span>
-                        </div>
-                        <div className="flex justify-between text-[10px] mt-0.5">
-                          <span className={textMutedClass}>Payout Rate:</span>
-                          <span className="font-semibold text-emerald-600">
-                            ${JSON.parse(farm.lease_terms || '{}').amount} &bull; {JSON.parse(farm.lease_terms || '{}').schedule}
-                          </span>
                         </div>
                         <div className="flex justify-between text-[10px] mt-0.5">
                           <span className={textMutedClass}>Term Duration:</span>
@@ -1088,13 +1529,25 @@ export default function FarmerPortal() {
                       const farmObj = farms.find(f => f.id === parseInt(e.target.value));
                       setSelectedFarm(farmObj || null);
                       setPlantMessage({ type: '', text: '' });
+                      if (farmObj && farmObj.boundary_polygon) {
+                        const coords = parseWKT(farmObj.boundary_polygon);
+                        if (coords.length > 0) {
+                          let latSum = 0, lngSum = 0;
+                          coords.forEach(pt => {
+                            latSum += pt[0];
+                            lngSum += pt[1];
+                          });
+                          setMapCenter([latSum / coords.length, lngSum / coords.length]);
+                          setMapZoom(16);
+                        }
+                      }
                     }}
                     className={`w-full rounded-xl px-3 py-2 text-xs outline-none border focus:border-emerald-500 transition-colors ${inputClass}`}
                   >
                     <option value="">-- Choose Farm --</option>
                     {farms.map(f => (
                       <option key={f.id} value={f.id}>
-                        SB-FARM-{f.id} ({f.total_area_acres} ac &bull; {f.status})
+                        {f.name || 'Unnamed Farm'} (ID: SB-FARM-{f.id}) - {f.total_area_acres} ac &bull; {f.status}
                       </option>
                     ))}
                   </select>
@@ -1126,22 +1579,33 @@ export default function FarmerPortal() {
                         <option value="Teak">Teak</option>
                         <option value="Mango">Mango</option>
                         <option value="Bamboo">Bamboo</option>
+                        <option value="Cashew">Cashew</option>
+                        <option value="Agarwood">Agarwood</option>
                         <option value="Other">Other</option>
                       </select>
+                      {plantSpecies === 'Other' && (
+                        <input
+                          type="text"
+                          placeholder="Enter species name..."
+                          value={customSpecies}
+                          onChange={(e) => setCustomSpecies(e.target.value)}
+                          className={`w-full rounded-xl px-3 py-2 text-xs outline-none border focus:border-emerald-500 transition-colors mt-2 ${inputClass}`}
+                          required
+                        />
+                      )}
                     </div>
                     
                     <div>
-                      <label className={`block text-[10px] font-bold uppercase mb-2 ${textMutedClass}`}>Snap Photo *</label>
+                      <label className={`block text-[10px] font-bold uppercase mb-2 ${textMutedClass}`}>Select / Snap Photo *</label>
                       <input 
                         type="file" 
                         ref={fileInputRef}
-                        capture="environment" 
-                        accept="image/jpeg, image/jpg" 
+                        accept="image/jpeg, image/jpg, image/png" 
                         required
                         onChange={handlePhotoCapture}
                         className={`w-full p-2.5 rounded-xl cursor-pointer border ${inputClass}`}
                       />
-                      <p className={`text-[9px] mt-1 ${textMutedClass}`}>Requires device camera with GPS location enabled.</p>
+                      <p className={`text-[9px] mt-1 ${textMutedClass}`}>JPG, JPEG or PNG formats. GPS matches automatically if available.</p>
                     </div>
 
                     {plantCoordinates && (
@@ -1153,54 +1617,195 @@ export default function FarmerPortal() {
                     <button 
                       type="submit" 
                       disabled={plantLoading}
-                      className="w-full py-3 bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold rounded-xl transition disabled:opacity-50 cursor-pointer"
+                      className="w-full py-3 gradient-btn text-black font-extrabold rounded-xl transition disabled:opacity-50 cursor-pointer"
                     >
-                      {plantLoading ? 'Uploading & Matching EXIF...' : 'Verify & Upload Tree'}
+                      {plantLoading ? 'Uploading & Processing...' : 'Upload Sapling'}
                     </button>
                   </form>
                 )}
               </div>
 
-              {/* Plant List card */}
-              <div className={`rounded-3xl p-6 border flex flex-col h-[600px] ${cardClass}`}>
-                <h3 className="text-sm font-bold mb-4">Cataloged Trees</h3>
-                {!selectedFarm ? (
-                  <div className={`text-center font-semibold my-auto text-xs ${textMutedClass}`}>
-                    Choose a farm in the left form to inspect mapped trees.
-                  </div>
-                ) : plants.length === 0 ? (
-                  <div className={`text-center font-semibold my-auto text-xs ${textMutedClass}`}>
-                    No trees cataloged on Farm SB-FARM-{selectedFarm.id} yet.
-                  </div>
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 overflow-y-auto pr-1 flex-grow custom-scrollbar">
-                    {plants.map((plant) => (
-                      <div key={plant.id} className={`border rounded-2xl p-3 flex gap-4 ${innerCardClass}`}>
-                        <img 
-                          src={`${window.API_BASE || 'api/'}${plant.photo_url}`} 
-                          alt={plant.species} 
-                          className="w-20 h-20 object-cover rounded-xl bg-slate-900"
+              {/* Cataloged Trees & Map */}
+              <div className="lg:col-span-2 flex flex-col gap-6">
+                
+                {/* Visual Map Area */}
+                {selectedFarm && (
+                  <div className={`rounded-3xl border overflow-hidden h-[300px] flex-shrink-0 z-0 relative ${cardClass}`}>
+                    <MapContainer center={mapCenter} zoom={mapZoom} style={{ height: '100%', width: '100%', background: isDark ? '#090d16' : '#f8fafc' }}>
+                      <ChangeView center={mapCenter} zoom={mapZoom} />
+                      <TileLayer attribution='&copy; CARTO' url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
+                      
+                      {/* Farm Polygon */}
+                      {parseWKT(selectedFarm.boundary_polygon).length > 0 && (
+                        <Polygon 
+                          positions={parseWKT(selectedFarm.boundary_polygon).map(c => [c[0], c[1]])} 
+                          pathOptions={{ fillColor: '#10b981', color: '#10b981', weight: 2, fillOpacity: 0.2 }}
                         />
-                        <div className="text-xs flex flex-col justify-between">
+                      )}
+
+                      {/* Plant Markers */}
+                      {plants.map(p => {
+                        if (p.gps_lat && p.gps_lng) {
+                          return (
+                            <Marker key={`plant-${p.id}`} position={[parseFloat(p.gps_lat), parseFloat(p.gps_lng)]}>
+                              <Popup>
+                                <div className="text-center font-bold">
+                                  <div>SB-TREE-{p.id}</div>
+                                  <div className="capitalize text-emerald-600">{p.species}</div>
+                                </div>
+                              </Popup>
+                            </Marker>
+                          );
+                        }
+                        return null;
+                      })}
+                    </MapContainer>
+                  </div>
+                )}
+
+                <div className={`rounded-3xl p-6 border flex flex-col h-[600px] ${cardClass}`}>
+                  <h3 className="text-sm font-bold mb-4 flex items-center justify-between">
+                    <span>Cataloged Trees</span>
+                    {plants.length > 0 && (
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-500">
+                        Total: {plants.length}
+                      </span>
+                    )}
+                  </h3>
+                  
+                  {!selectedFarm ? (
+                    <div className={`text-center font-semibold my-auto text-xs ${textMutedClass}`}>
+                      Choose a farm in the left form to inspect mapped trees.
+                    </div>
+                  ) : plants.length === 0 ? (
+                    <div className={`text-center font-semibold my-auto text-xs ${textMutedClass}`}>
+                      No trees cataloged on {selectedFarm.name || 'this farm'} (ID: SB-FARM-{selectedFarm.id}) yet.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 gap-4 overflow-y-auto pr-1 flex-grow custom-scrollbar">
+                    {plants.map((plant) => (
+                      <div key={plant.id} className={`border rounded-2xl p-3 flex flex-col sm:flex-row gap-4 ${innerCardClass}`}>
+                        <img 
+                          src={plant.photo_url} 
+                          alt={plant.species} 
+                          onClick={() => setSelectedPlant(plant)}
+                          className="w-20 h-20 object-cover rounded-xl bg-slate-900 self-center cursor-pointer hover:opacity-80 transition-opacity"
+                        />
+                        <div className="text-xs flex flex-col justify-between flex-grow">
                           <div>
-                            <span className="font-bold capitalize text-sm">{plant.species}</span>
-                            <div className={`text-[10px] font-mono mt-1 ${textMutedClass}`}>ID: SB-TREE-{plant.id}</div>
+                            <div className="flex justify-between items-center">
+                              <span className="font-bold capitalize text-sm">{plant.species}</span>
+                              <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-bold uppercase ${
+                                plant.status === 'approved' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800/40' :
+                                plant.status === 'rejected' ? 'bg-red-950 text-red-400 border border-red-800/40' : 'bg-orange-950 text-orange-400 border border-orange-800/40'
+                              }`}>
+                                {plant.status}
+                              </span>
+                            </div>
+                            <div className={`text-[10px] font-mono mt-1 ${textMutedClass}`}>
+                              Plant ID: SB-TREE-{plant.id} on {selectedFarm ? (selectedFarm.name || 'Unnamed Farm') : 'N/A'} (ID: {plant.farm_id})
+                            </div>
                           </div>
-                          <div className="text-[10px] text-emerald-400 font-mono overflow-hidden text-ellipsis whitespace-nowrap max-w-[150px]">
-                            {plant.coordinates}
-                          </div>
+                          
+
                         </div>
                       </div>
                     ))}
                   </div>
-                )}
+                  )}
+            </div>
+          </div>
+        </div>
+        </div>
+        )}
+
+        {/* TAB 5: PRODUCTS */}
+        {activeTab === 'products' && (
+          <div className="max-w-5xl mx-auto animate-fadeIn">
+            <ProductsPage token={token} />
+          </div>
+        )}
+
+        {/* TAB 6: RENTALS */}
+        {activeTab === 'rentals' && (
+          <div className="max-w-5xl mx-auto animate-fadeIn">
+            <RentalsPage token={token} />
+          </div>
+        )}
+
+        {/* TAB 7: BULK ORDERS */}
+        {activeTab === 'bulk' && (
+          <div className="max-w-5xl mx-auto animate-fadeIn">
+            <BulkOrdersPage token={token} />
+          </div>
+        )}
+
+        {/* TAB 8: MY ORDERS */}
+        {activeTab === 'orders' && (
+          <div className="max-w-5xl mx-auto animate-fadeIn">
+            <MyOrders token={token} />
+          </div>
+        )}
+
+      </main>
+
+        {/* Full Screen Image Modal */}
+        {selectedPlant && (
+          <div 
+            className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fadeIn"
+            onClick={() => setSelectedPlant(null)}
+          >
+            <div className={`relative max-w-4xl w-full flex flex-col md:flex-row overflow-hidden rounded-2xl shadow-2xl border ${isDark ? 'bg-[#060a07] border-white/10 text-slate-100' : 'bg-white border-slate-200 text-slate-900'}`} onClick={(e) => e.stopPropagation()}>
+              <button 
+                onClick={() => setSelectedPlant(null)}
+                className="absolute top-4 right-4 bg-black/50 w-8 h-8 rounded-full text-white hover:bg-emerald-500 font-bold flex items-center justify-center cursor-pointer z-10 transition-colors"
+              >
+                X
+              </button>
+              
+              {/* Image Section */}
+              <div className="w-full md:w-3/5 bg-black flex items-center justify-center p-2">
+                <img 
+                  src={selectedPlant.photo_url} 
+                  alt={selectedPlant.species} 
+                  className="w-full h-auto max-h-[60vh] md:max-h-[85vh] object-contain rounded-xl"
+                />
+              </div>
+
+              {/* Details Section */}
+              <div className="w-full md:w-2/5 p-6 flex flex-col gap-4 overflow-y-auto max-h-[40vh] md:max-h-[85vh]">
+                <div>
+                  <h3 className="text-2xl font-black capitalize text-emerald-500 mb-1">{selectedPlant.species}</h3>
+                  <div className={`text-xs font-mono mb-3 ${textMutedClass}`}>Plant ID: SB-TREE-{selectedPlant.id}</div>
+                  <span className={`text-[10px] px-2 py-1 rounded-full font-bold uppercase ${
+                    selectedPlant.status === 'approved' ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' :
+                    selectedPlant.status === 'rejected' ? 'bg-red-950 text-red-400 border border-red-800' : 'bg-orange-950 text-orange-400 border border-orange-800'
+                  }`}>
+                    Status: {selectedPlant.status}
+                  </span>
+                </div>
+
+                <div className={`space-y-3 text-sm border-t pt-4 ${isDark ? 'border-white/10' : 'border-slate-200'}`}>
+                  <div>
+                    <strong className="block text-[10px] uppercase tracking-wider text-emerald-500/70 mb-0.5">Planted Date</strong>
+                    <span>{new Date(selectedPlant.planted_at).toLocaleString()}</span>
+                  </div>
+                  <div>
+                    <strong className="block text-[10px] uppercase tracking-wider text-emerald-500/70 mb-0.5">GPS Coordinates (EXIF)</strong>
+                    <span className="font-mono text-xs break-all">{selectedPlant.coordinates}</span>
+                  </div>
+                  <div>
+                    <strong className="block text-[10px] uppercase tracking-wider text-emerald-500/70 mb-0.5">Farm ID</strong>
+                    <span className="font-mono">SB-FARM-{selectedPlant.farm_id}</span>
+                  </div>
+                </div>
               </div>
 
             </div>
           </div>
         )}
-
-      </main>
-    </div>
+      </div>
+  
   );
 }
+
